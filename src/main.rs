@@ -1,9 +1,12 @@
+#![allow(unused)]
 use crate::client::tls_client;
 use crate::server::tls_server;
 use anyhow::Result;
 
 mod client;
 mod common;
+mod handshake;
+mod record;
 mod server;
 
 #[tokio::main]

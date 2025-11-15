@@ -1,3 +1,5 @@
+use num_enum::TryFromPrimitive;
+
 pub struct TlsClientHello {
     /// In TLS 1.3, the TLS server indicates its version using the
     /// "supported versions" extension and the legacy_version field
@@ -25,7 +27,10 @@ impl TlsClientHello {
     }
 }
 
+#[derive(Debug, Clone, TryFromPrimitive, PartialEq)]
+#[repr(u16)]
 pub enum TlsProtocolVersion {
+    Tls10 = 0x0301,
     Tls12 = 0x0303,
     Tls13 = 0x0304,
 }
@@ -79,6 +84,13 @@ pub struct TlsServerHello {
     /// which are required to establish the cryptographic context and negotiate
     /// the protocol version.
     extensions: Vec<Extension>,
+}
+
+impl TlsServerHello {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out
+    }
 }
 
 // **Hello Retry Request**
