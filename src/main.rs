@@ -8,10 +8,6 @@ mod server;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let server = tokio::spawn(tls_server());
-    let client = tokio::spawn(tls_client());
-    let (server_res, client_res) = tokio::try_join!(server, client)?;
-    server_res?;
-    client_res?;
+    tokio::try_join!(tls_server(), tls_client())?;
     Ok(())
 }
