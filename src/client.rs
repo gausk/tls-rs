@@ -6,3 +6,11 @@ pub async fn tls_client() -> Result<()> {
     println!("Connected to the server");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tls_client() {}
+}

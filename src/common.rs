@@ -1,4 +1,6 @@
 use num_enum::TryFromPrimitive;
+use rand::random;
+use crate::common::TlsCipherSuite::TLS_AES_256_GCM_SHA384;
 
 pub struct TlsClientHello {
     /// In TLS 1.3, the TLS server indicates its version using the
@@ -21,8 +23,29 @@ pub struct TlsClientHello {
 }
 
 impl TlsClientHello {
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn new() -> TlsClientHello {
+        TlsClientHello {
+            legacy_version: TlsProtocolVersion::Tls12,
+            random: random(),
+            legacy_session_id: random(),
+            cipher_suites: vec![TlsCipherSuite::TLS_AES_256_GCM_SHA384],
+            legacy_compression_method: 0,
+            extensions: Vec::new(),
+        }
+    }
+
+    pub fn to_bytes(self) -> Vec<u8> {
         let mut out = Vec::new();
+        out.extend((self.legacy_version as u16).to_be_bytes());
+        out.extend(self.random);
+        out.push(self.legacy_session_id.len() as u8);
+        out.extend(self.legacy_session_id);
+        out.extend(((self.cipher_suites.len() * 2) as u16).to_be_bytes());
+        for cipher_suite in self.cipher_suites {
+            out.extend((cipher_suite as u16).to_be_bytes());
+        }
+        out.push(1); // length of legacy_compression_method which will be zero
+        out.push(self.legacy_compression_method);
         out
     }
 }
@@ -35,6 +58,8 @@ pub enum TlsProtocolVersion {
     Tls13 = 0x0304,
 }
 
+#[derive(Debug, Clone, TryFromPrimitive, PartialEq)]
+#[repr(u16)]
 pub enum TlsCipherSuite {
     TLS_AES_256_GCM_SHA384 = 0x1302,
     TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 = 0xc02c,
@@ -87,8 +112,14 @@ pub struct TlsServerHello {
 }
 
 impl TlsServerHello {
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(self) -> Vec<u8> {
         let mut out = Vec::new();
+        out.extend((self.legacy_version as u16).to_be_bytes());
+        out.extend(self.random);
+        out.push(self.legacy_session_id_echo.len() as u8);
+        out.extend(self.legacy_session_id_echo);
+        out.extend((self.cipher_suites as u16).to_be_bytes());
+        out.push(self.legacy_compression_method);
         out
     }
 }
@@ -99,3 +130,4 @@ impl TlsServerHello {
 // not contain sufficient information to proceed with the handshake. The
 // HelloRetryRequest message uses the same structure as the TlsServerHello,
 // but with Random set to the special value of the SHA-256 of "HelloRetryRequest"
+
