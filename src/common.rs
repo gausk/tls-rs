@@ -113,7 +113,7 @@ impl TlsClientHello {
             legacy_session_id: legacy_session_id.try_into()?,
             cipher_suites,
             legacy_compression_method: 0,
-            extensions: Vec::new(),
+            extensions: Extension::from_bytes(&bytes[offset..])?,
         })
     }
 }
@@ -187,16 +187,13 @@ impl TlsServerHello {
             bail!("unable to read legacy version");
         }
         let legacy_version = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
-        println!("legacy version: {}", legacy_version);
         offset += 2;
         if offset + 32 > len {
             bail!("unable to read random");
         }
         let random = &bytes[offset..offset + 32];
-        println!("random: {:?}", random);
         offset += 32;
         let session_id_len = bytes[offset];
-        println!("session_id_len: {}", session_id_len);
         assert!(
             session_id_len == 32,
             "session_id_len found {session_id_len}"
@@ -216,7 +213,7 @@ impl TlsServerHello {
             legacy_session_id_echo: legacy_session_id.try_into()?,
             cipher_suite,
             legacy_compression_method: 0,
-            extensions: Vec::new(),
+            extensions: Extension::from_bytes(&bytes[offset..])?,
         })
     }
 }

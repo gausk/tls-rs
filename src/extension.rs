@@ -1,4 +1,5 @@
 use crate::common::TlsProtocolVersion;
+use anyhow::Result;
 use num_enum::TryFromPrimitive;
 
 #[derive(Debug, Clone, TryFromPrimitive, PartialEq)]
@@ -86,6 +87,10 @@ impl Extension {
             }
         }
         out
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Vec<Extension>> {
+        Ok(Vec::new())
     }
 
     pub fn extension_type(&self) -> ExtensionType {
