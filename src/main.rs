@@ -1,4 +1,4 @@
-#![allow(unused)]
+#![allow(unused, non_camel_case_types)]
 use crate::client::tls_client;
 use crate::server::tls_server;
 use anyhow::Result;

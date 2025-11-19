@@ -33,7 +33,7 @@ impl TlsPlainText {
         }
     }
 
-    pub fn to_bytes(self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         let mut out = Vec::new();
         out.push(self.content_type as u8);
         out.extend((self.legacy_record_version as u16).to_be_bytes());

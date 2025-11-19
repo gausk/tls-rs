@@ -1,6 +1,6 @@
+use crate::common::TlsCipherSuite::TLS_AES_256_GCM_SHA384;
 use num_enum::TryFromPrimitive;
 use rand::random;
-use crate::common::TlsCipherSuite::TLS_AES_256_GCM_SHA384;
 
 pub struct TlsClientHello {
     /// In TLS 1.3, the TLS server indicates its version using the
@@ -34,7 +34,7 @@ impl TlsClientHello {
         }
     }
 
-    pub fn to_bytes(self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend((self.legacy_version as u16).to_be_bytes());
         out.extend(self.random);
@@ -112,7 +112,7 @@ pub struct TlsServerHello {
 }
 
 impl TlsServerHello {
-    pub fn to_bytes(self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend((self.legacy_version as u16).to_be_bytes());
         out.extend(self.random);
@@ -130,4 +130,3 @@ impl TlsServerHello {
 // not contain sufficient information to proceed with the handshake. The
 // HelloRetryRequest message uses the same structure as the TlsServerHello,
 // but with Random set to the special value of the SHA-256 of "HelloRetryRequest"
-

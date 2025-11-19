@@ -30,12 +30,12 @@ pub enum HandShake {
 }
 
 impl HandShake {
-    pub fn to_bytes(self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         let mut out = Vec::new();
         match self {
             HandShake::ClientHello(hello) => {
                 out.push(HandShakeType::client_hello as u8);
-                let data = hello.to_bytes();
+                let data = hello.into_bytes();
                 let len = (data.len() as u32).to_be_bytes();
                 assert!(len[0] == 0);
                 out.extend([len[1], len[2], len[3]]);
@@ -43,7 +43,7 @@ impl HandShake {
             }
             HandShake::ServerHello(hello) => {
                 out.push(HandShakeType::server_hello as u8);
-                let data = hello.to_bytes();
+                let data = hello.into_bytes();
                 let len = (data.len() as u32).to_be_bytes();
                 assert!(len[0] == 0);
                 out.extend([len[1], len[2], len[3]]);
