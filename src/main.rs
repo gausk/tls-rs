@@ -5,6 +5,7 @@ use anyhow::Result;
 
 mod client;
 mod common;
+mod extension;
 mod handshake;
 mod record;
 mod server;

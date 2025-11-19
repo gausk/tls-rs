@@ -1,7 +1,10 @@
 use crate::common::TlsCipherSuite::TLS_AES_256_GCM_SHA384;
+use crate::extension::{Extension, KeyShareEntry, NamedGroup, SignatureScheme};
+use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
 use rand::random;
 
+#[derive(Debug)]
 pub struct TlsClientHello {
     /// In TLS 1.3, the TLS server indicates its version using the
     /// "supported versions" extension and the legacy_version field
@@ -23,14 +26,26 @@ pub struct TlsClientHello {
 }
 
 impl TlsClientHello {
-    pub fn new() -> TlsClientHello {
+    pub fn new(share_pub_key: Vec<u8>) -> TlsClientHello {
         TlsClientHello {
             legacy_version: TlsProtocolVersion::Tls12,
             random: random(),
             legacy_session_id: random(),
             cipher_suites: vec![TlsCipherSuite::TLS_AES_256_GCM_SHA384],
             legacy_compression_method: 0,
-            extensions: Vec::new(),
+            extensions: vec![
+                Extension::Signature(vec![
+                    SignatureScheme::ecdsa_secp256r1_sha256,
+                    SignatureScheme::ecdsa_secp384r1_sha384,
+                    SignatureScheme::rsa_pss_rsae_sha256,
+                ]),
+                Extension::SupportedVersionsClient(vec![TlsProtocolVersion::Tls13]),
+                Extension::SupportedGroups(vec![NamedGroup::secp256r1]),
+                Extension::KeyShareClient(vec![KeyShareEntry {
+                    group: NamedGroup::secp256r1,
+                    pub_key: share_pub_key,
+                }]),
+            ],
         }
     }
 
@@ -46,7 +61,60 @@ impl TlsClientHello {
         }
         out.push(1); // length of legacy_compression_method which will be zero
         out.push(self.legacy_compression_method);
+        let mut extension_len = 0;
+        for extension in &self.extensions {
+            extension_len += extension.len();
+        }
+        if extension_len > 0 {
+            out.extend((extension_len as u16).to_be_bytes());
+            for extension in self.extensions {
+                out.extend(extension.into_bytes());
+            }
+        }
         out
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<TlsClientHello> {
+        let mut offset = 0;
+        let len = bytes.len();
+        if offset + 2 > len {
+            bail!("unable to read legacy version");
+        }
+        let legacy_version = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+        offset += 2;
+        if offset + 32 > len {
+            bail!("unable to read random");
+        }
+        let random = &bytes[offset..offset + 32];
+        offset += 32;
+        let session_id_len = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+        assert!(session_id_len == 32);
+        offset += 2;
+        let legacy_session_id = &bytes[offset..offset + 32];
+        offset += 32;
+        let cipher_suites_len = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+        offset += 2;
+        let mut cipher_suites = Vec::new();
+        for _ in 0..(cipher_suites_len as usize / 2) {
+            cipher_suites.push(TlsCipherSuite::try_from(u16::from_be_bytes([
+                bytes[offset],
+                bytes[offset + 1],
+            ]))?);
+            offset += 2;
+        }
+        // legacy_compression_method check
+        assert!(bytes[offset] == 1);
+        offset += 1;
+        assert!(bytes[offset] == 0);
+        offset += 1;
+        Ok(Self {
+            legacy_version: TlsProtocolVersion::try_from(legacy_version)?,
+            random: random.try_into()?,
+            legacy_session_id: legacy_session_id.try_into()?,
+            cipher_suites,
+            legacy_compression_method: 0,
+            extensions: Vec::new(),
+        })
     }
 }
 
@@ -67,28 +135,7 @@ pub enum TlsCipherSuite {
     TLS_RSA_WITH_AES_256_GCM_SHA384 = 0x009d,
 }
 
-pub struct Extension {
-    extension_type: ExtensionType,
-    extension_data: Vec<u8>,
-}
-
-pub enum SignatureScheme {
-    ecdsa_secp256r1_sha256 = 0x0403,
-    rsa_pkcs1_sha256 = 0x0401,
-}
-
-pub enum ExtensionType {
-    server_name = 0,
-    supported_groups = 10,
-    application_layer_protocol_negotiation = 16,
-    status_request = 5,
-    signature_algorithms = 13,
-    signed_certificate_timestamp = 18,
-    key_share = 51,
-    psk_key_exchange_modes = 45,
-    supported_versions = 43,
-}
-
+#[derive(Debug)]
 pub struct TlsServerHello {
     /// In TLS 1.3, the TLS server indicates its version using the
     /// "supported versions" extension and the legacy_version field
@@ -102,7 +149,7 @@ pub struct TlsServerHello {
     legacy_session_id_echo: [u8; 32],
     /// The single cipher suite selected by the server from the list
     /// in ClientHello.cipher suites.
-    cipher_suites: TlsCipherSuite,
+    cipher_suite: TlsCipherSuite,
     /// A single byte which MUST have the value 0.
     legacy_compression_method: u8,
     /// A list of extensions. The ServerHello MUST only include extensions
@@ -118,9 +165,59 @@ impl TlsServerHello {
         out.extend(self.random);
         out.push(self.legacy_session_id_echo.len() as u8);
         out.extend(self.legacy_session_id_echo);
-        out.extend((self.cipher_suites as u16).to_be_bytes());
+        out.extend((self.cipher_suite as u16).to_be_bytes());
         out.push(self.legacy_compression_method);
+        let mut extension_len = 0;
+        for extension in &self.extensions {
+            extension_len += extension.len();
+        }
+        if extension_len > 0 {
+            out.extend((extension_len as u16).to_be_bytes());
+            for extension in self.extensions {
+                out.extend(extension.into_bytes());
+            }
+        }
         out
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<TlsServerHello> {
+        let mut offset = 0;
+        let len = bytes.len();
+        if offset + 2 > len {
+            bail!("unable to read legacy version");
+        }
+        let legacy_version = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+        println!("legacy version: {}", legacy_version);
+        offset += 2;
+        if offset + 32 > len {
+            bail!("unable to read random");
+        }
+        let random = &bytes[offset..offset + 32];
+        println!("random: {:?}", random);
+        offset += 32;
+        let session_id_len = bytes[offset];
+        println!("session_id_len: {}", session_id_len);
+        assert!(
+            session_id_len == 32,
+            "session_id_len found {session_id_len}"
+        );
+        offset += 1;
+        let legacy_session_id = &bytes[offset..offset + 32];
+        offset += 32;
+        let cipher_suite =
+            TlsCipherSuite::try_from(u16::from_be_bytes([bytes[offset], bytes[offset + 1]]))?;
+        offset += 2;
+        // legacy_compression_method check
+        assert!(bytes[offset] == 0);
+        offset += 1;
+        Ok(Self {
+            legacy_version: TlsProtocolVersion::try_from(legacy_version)?,
+            random: random.try_into()?,
+            legacy_session_id_echo: legacy_session_id.try_into()?,
+            cipher_suite,
+            legacy_compression_method: 0,
+            extensions: Vec::new(),
+        })
     }
 }
 

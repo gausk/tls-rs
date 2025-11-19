@@ -1,4 +1,7 @@
-use crate::common::TlsProtocolVersion;
+use crate::common::{TlsClientHello, TlsProtocolVersion};
+use crate::handshake::HandShake;
+use crate::record::TlsContentType::handshake;
+use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
 
 #[derive(Debug, Clone, TryFromPrimitive, PartialEq)]
@@ -10,6 +13,7 @@ pub enum TlsContentType {
     application_data = 23,
 }
 
+#[derive(Debug)]
 pub struct TlsPlainText {
     /// The higher-level protocol used to process the enclosed fragment.
     pub content_type: TlsContentType,
@@ -20,25 +24,63 @@ pub struct TlsPlainText {
     /// The length (in bytes) of the following TLSPlaintext.fragment
     pub length: u16,
     /// The data being transmitted
-    pub fragment: Vec<u8>,
+    pub fragment: HandShake,
 }
 
 impl TlsPlainText {
-    pub fn new(content_type: TlsContentType, bytes: Vec<u8>) -> Self {
+    pub fn new(content_type: TlsContentType, hand_shake: HandShake) -> Self {
         Self {
             content_type,
             legacy_record_version: TlsProtocolVersion::Tls12,
-            length: bytes.len() as u16, // TODO: check overflow
-            fragment: bytes,
+            // Set correctly while doing into_bytes
+            // TODO: set correctly here
+            length: 0,
+            fragment: hand_shake,
         }
     }
 
     pub fn into_bytes(self) -> Vec<u8> {
         let mut out = Vec::new();
+        let fragment = self.fragment.into_bytes();
         out.push(self.content_type as u8);
         out.extend((self.legacy_record_version as u16).to_be_bytes());
-        out.extend(self.length.to_be_bytes());
-        out.extend(self.fragment);
+        out.extend((fragment.len() as u16).to_be_bytes());
+        out.extend(fragment);
         out
+    }
+
+    pub fn client_hello(share_pub_key: Vec<u8>) -> Self {
+        let client_hello = HandShake::client_hello(share_pub_key);
+        TlsPlainText::new(TlsContentType::handshake, client_hello)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let mut offset = 0;
+        let len = bytes.len();
+        if offset + 1 >= len {
+            bail!("unexpected data length, not able to read content type");
+        }
+        let content_type = TlsContentType::try_from(bytes[offset])?;
+        offset += 1;
+        if offset + 2 >= len {
+            bail!("unexpected data length, not able to read legacy record version");
+        }
+        let record_version = u16::from_be_bytes(bytes[offset..(offset + 2)].try_into()?);
+        let legacy_record_version = TlsProtocolVersion::try_from_primitive(record_version)?;
+        offset += 2;
+        if offset + 2 >= len {
+            bail!("unexpected data length, not able to read legacy record version");
+        }
+        let length = u16::from_be_bytes(bytes[offset..(offset + 2)].try_into()?);
+        offset += 2;
+        if offset + length as usize > len {
+            bail!("unexpected data length, not able to read fragment");
+        }
+        Ok(Self {
+            content_type,
+            legacy_record_version,
+            length,
+            fragment: HandShake::from_bytes(&bytes[offset..offset + length as usize])?,
+        })
     }
 }

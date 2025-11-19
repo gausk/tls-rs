@@ -1,4 +1,5 @@
 use crate::common::{TlsClientHello, TlsServerHello};
+use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
 
 #[derive(Debug, Clone, TryFromPrimitive, PartialEq)]
@@ -24,6 +25,7 @@ pub enum HandShakeType {
 ///     case key_update:            KeyUpdate;
 ///     };
 /// } Handshake;
+#[derive(Debug)]
 pub enum HandShake {
     ClientHello(TlsClientHello),
     ServerHello(TlsServerHello),
@@ -51,5 +53,40 @@ impl HandShake {
             }
         }
         out
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<HandShake> {
+        let mut offset = 0;
+        let len = bytes.len();
+        if len < 3 {
+            bail!("invalid handshake data");
+        }
+        let handshake_type = HandShakeType::try_from(bytes[0])?;
+        offset += 1;
+        let handshake_len: u32 = (bytes[offset] as u32) << 16
+            | (bytes[offset + 1] as u32) << 8
+            | (bytes[offset + 2] as u32);
+        offset += 3;
+        if offset + handshake_len as usize != len {
+            bail!(
+                "invalid handshake length expected {}, got {}",
+                offset + handshake_len as usize,
+                len
+            );
+        }
+        Ok(match handshake_type {
+            HandShakeType::client_hello => {
+                let client = TlsClientHello::from_bytes(&bytes[offset..])?;
+                HandShake::ClientHello(client)
+            }
+            HandShakeType::server_hello => {
+                let server = TlsServerHello::from_bytes(&bytes[offset..])?;
+                HandShake::ServerHello(server)
+            }
+        })
+    }
+
+    pub fn client_hello(share_pub_key: Vec<u8>) -> Self {
+        HandShake::ClientHello(TlsClientHello::new(share_pub_key))
     }
 }
