@@ -1,4 +1,5 @@
 use crate::common::{TlsClientHello, TlsProtocolVersion};
+use crate::extension::Extension;
 use crate::handshake::HandShake;
 use crate::record::TlsContentType::handshake;
 use anyhow::{Result, bail};
@@ -94,5 +95,25 @@ impl TlsPlainText {
             HandShake::ServerHello(server) => server.legacy_session_id_echo,
             HandShake::ClientHello(client) => client.legacy_session_id,
         }
+    }
+
+    pub fn public_key(&self) -> Result<&[u8]> {
+        match &self.fragment {
+            HandShake::ServerHello(server) => {
+                for extension in &server.extensions {
+                    if let Extension::KeyShareServer(entry) = extension {
+                        return Ok(entry.pub_key.as_slice());
+                    }
+                }
+            }
+            HandShake::ClientHello(client) => {
+                for extension in &client.extensions {
+                    if let Extension::KeyShareServer(entry) = extension {
+                        return Ok(entry.pub_key.as_slice());
+                    }
+                }
+            }
+        }
+        bail!("public key should be handshake");
     }
 }

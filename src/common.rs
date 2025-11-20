@@ -21,7 +21,7 @@ pub struct TlsClientHello {
     legacy_compression_method: u8,
     /// TLS 1.3 ClientHello messages always contain extensions (minimally "supported versions"
     /// otherwise, they will be interpreted as TLS 1.2 ClientHello messages)
-    extensions: Vec<Extension>,
+    pub extensions: Vec<Extension>,
 }
 
 impl TlsClientHello {
@@ -154,7 +154,7 @@ pub struct TlsServerHello {
     /// A list of extensions. The ServerHello MUST only include extensions
     /// which are required to establish the cryptographic context and negotiate
     /// the protocol version.
-    extensions: Vec<Extension>,
+    pub extensions: Vec<Extension>,
 }
 
 impl TlsServerHello {

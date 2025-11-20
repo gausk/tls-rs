@@ -1,4 +1,5 @@
 use crate::record::TlsPlainText;
+use crate::record_encrypted::calculate_handshake_traffic_secret;
 use anyhow::Result;
 use p256::ecdh::EphemeralSecret;
 use rand_core::OsRng;
@@ -25,6 +26,9 @@ pub async fn tls_server() -> Result<()> {
     let server_hello = TlsPlainText::server_hello(pub_key_bytes, client_hello.session_id());
     tcp_stream.write_all(&server_hello.into_bytes()).await?;
     tcp_stream.flush().await?;
+
+    let handshake_secret =
+        calculate_handshake_traffic_secret(&secret, client_hello.public_key()?)?;
     Ok(())
 }
 

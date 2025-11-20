@@ -1,4 +1,5 @@
 use crate::record::TlsPlainText;
+use crate::record_encrypted::calculate_handshake_traffic_secret;
 use anyhow::Result;
 use p256::ecdh::EphemeralSecret;
 use rand::random;
@@ -23,6 +24,9 @@ pub async fn tls_client() -> Result<()> {
     let len = tcp_stream.read(&mut data).await?;
     let server_hello = TlsPlainText::from_bytes(&data[0..len])?;
     println!("{:?}", server_hello);
+
+    let handshake_secret =
+        calculate_handshake_traffic_secret(&secret, server_hello.public_key()?)?;
     Ok(())
 }
 
@@ -52,6 +56,8 @@ mod tests {
                 "certs/cert.pem",
                 "-accept",
                 "4433",
+                "-tls1_3",
+                "-no_middlebox",
                 "-quiet",
             ])
             .spawn()
