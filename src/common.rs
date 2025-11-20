@@ -1,4 +1,3 @@
-use crate::common::TlsCipherSuite::TLS_AES_256_GCM_SHA384;
 use crate::extension::{Extension, KeyShareEntry, NamedGroup, SignatureScheme};
 use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
@@ -14,7 +13,7 @@ pub struct TlsClientHello {
     random: [u8; 32],
     /// Versions of TLS before TLS 1.3 supported a "session resumption"
     /// feature which has been merged with pre-shared keys in this version.
-    legacy_session_id: [u8; 32],
+    pub legacy_session_id: [u8; 32],
     /// A list of the symmetric cipher options supported by the client.
     cipher_suites: Vec<TlsCipherSuite>,
     /// For every TLS 1.3 ClientHello, this vector MUST contain exactly one byte,
@@ -87,9 +86,9 @@ impl TlsClientHello {
         }
         let random = &bytes[offset..offset + 32];
         offset += 32;
-        let session_id_len = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+        let session_id_len = bytes[offset];
         assert!(session_id_len == 32);
-        offset += 2;
+        offset += 1;
         let legacy_session_id = &bytes[offset..offset + 32];
         offset += 32;
         let cipher_suites_len = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
@@ -113,7 +112,7 @@ impl TlsClientHello {
             legacy_session_id: legacy_session_id.try_into()?,
             cipher_suites,
             legacy_compression_method: 0,
-            extensions: Extension::from_bytes(&bytes[offset..])?,
+            extensions: Extension::list_from_bytes(&bytes[offset..], true)?,
         })
     }
 }
@@ -146,7 +145,7 @@ pub struct TlsServerHello {
     /// independently of the ClientHello.random.
     random: [u8; 32],
     /// The contents of the client's legacy_session_id field
-    legacy_session_id_echo: [u8; 32],
+    pub legacy_session_id_echo: [u8; 32],
     /// The single cipher suite selected by the server from the list
     /// in ClientHello.cipher suites.
     cipher_suite: TlsCipherSuite,
@@ -178,6 +177,23 @@ impl TlsServerHello {
             }
         }
         out
+    }
+
+    pub fn new(pub_key: Vec<u8>, session_id: [u8; 32]) -> Self {
+        Self {
+            legacy_version: TlsProtocolVersion::Tls12,
+            random: random(),
+            legacy_session_id_echo: session_id,
+            cipher_suite: TlsCipherSuite::TLS_AES_256_GCM_SHA384,
+            legacy_compression_method: 0,
+            extensions: vec![
+                Extension::SupportedVersionsServer(TlsProtocolVersion::Tls13),
+                Extension::KeyShareServer(KeyShareEntry {
+                    group: NamedGroup::secp256r1,
+                    pub_key,
+                }),
+            ],
+        }
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<TlsServerHello> {
@@ -213,7 +229,7 @@ impl TlsServerHello {
             legacy_session_id_echo: legacy_session_id.try_into()?,
             cipher_suite,
             legacy_compression_method: 0,
-            extensions: Extension::from_bytes(&bytes[offset..])?,
+            extensions: Extension::list_from_bytes(&bytes[offset..], false)?,
         })
     }
 }

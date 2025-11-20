@@ -54,6 +54,11 @@ impl TlsPlainText {
         TlsPlainText::new(TlsContentType::handshake, client_hello)
     }
 
+    pub fn server_hello(share_pub_key: Vec<u8>, session_id: [u8; 32]) -> Self {
+        let server_hello = HandShake::server_hello(share_pub_key, session_id);
+        TlsPlainText::new(TlsContentType::handshake, server_hello)
+    }
+
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let mut offset = 0;
         let len = bytes.len();
@@ -82,5 +87,12 @@ impl TlsPlainText {
             length,
             fragment: HandShake::from_bytes(&bytes[offset..offset + length as usize])?,
         })
+    }
+
+    pub fn session_id(&self) -> [u8; 32] {
+        match &self.fragment {
+            HandShake::ServerHello(server) => server.legacy_session_id_echo,
+            HandShake::ClientHello(client) => client.legacy_session_id,
+        }
     }
 }

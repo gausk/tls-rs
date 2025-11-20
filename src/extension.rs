@@ -1,5 +1,5 @@
 use crate::common::TlsProtocolVersion;
-use anyhow::Result;
+use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
 
 #[derive(Debug, Clone, TryFromPrimitive, PartialEq)]
@@ -89,8 +89,120 @@ impl Extension {
         out
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Vec<Extension>> {
-        Ok(Vec::new())
+    pub fn list_from_bytes(bytes: &[u8], is_client: bool) -> Result<Vec<Extension>> {
+        let mut offset = 0;
+        let length = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) as usize;
+        offset += 2;
+        if 2 + length != bytes.len() {
+            bail!("Invalid extension length");
+        }
+        let mut extensions = Vec::new();
+        while offset < bytes.len() {
+            let ext = Extension::from_bytes(bytes, &mut offset, is_client)?;
+            extensions.push(ext);
+        }
+        Ok(extensions)
+    }
+
+    pub fn from_bytes(bytes: &[u8], offset: &mut usize, is_client: bool) -> Result<Extension> {
+        let ext_type =
+            ExtensionType::try_from(u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]))?;
+        *offset += 2;
+
+        let ext_len = u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]) as usize;
+        *offset += 2;
+
+        match ext_type {
+            ExtensionType::signature_algorithms => {
+                let scheme_len = u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]) as usize;
+                *offset += 2;
+                let mut schemes = Vec::new();
+                for _ in 0..(scheme_len / 2) {
+                    schemes.push(SignatureScheme::try_from(u16::from_be_bytes([
+                        bytes[*offset],
+                        bytes[*offset + 1],
+                    ]))?);
+                    *offset += 2;
+                }
+                Ok(Extension::Signature(schemes))
+            }
+            ExtensionType::supported_versions => {
+                if is_client {
+                    let versions_len = bytes[*offset] as usize;
+                    *offset += 1;
+                    let mut versions = Vec::new();
+                    for _ in 0..versions_len / 2 {
+                        versions.push(TlsProtocolVersion::try_from_primitive(u16::from_be_bytes(
+                            [bytes[*offset], bytes[*offset + 1]],
+                        ))?);
+                        *offset += 2;
+                    }
+                    Ok(Extension::SupportedVersionsClient(versions))
+                } else {
+                    let version = TlsProtocolVersion::try_from_primitive(u16::from_be_bytes([
+                        bytes[*offset],
+                        bytes[*offset + 1],
+                    ]))?;
+                    *offset += 2;
+                    Ok(Extension::SupportedVersionsServer(version))
+                }
+            }
+            ExtensionType::key_share => {
+                if is_client {
+                    let key_shares_len =
+                        u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]) as usize;
+                    *offset += 2;
+                    let max_key_len = *offset + key_shares_len;
+                    let mut key_shares = Vec::new();
+                    while *offset < max_key_len {
+                        let group = NamedGroup::try_from(u16::from_be_bytes([
+                            bytes[*offset],
+                            bytes[*offset + 1],
+                        ]))?;
+                        *offset += 2;
+                        let pub_key_len =
+                            u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]) as usize;
+                        *offset += 2;
+                        let pub_key_bytes = &bytes[*offset..*offset + pub_key_len];
+                        *offset += pub_key_len;
+                        key_shares.push(KeyShareEntry {
+                            group,
+                            pub_key: pub_key_bytes.to_vec(),
+                        });
+                    }
+                    Ok(Extension::KeyShareClient(key_shares))
+                } else {
+                    let group = NamedGroup::try_from(u16::from_be_bytes([
+                        bytes[*offset],
+                        bytes[*offset + 1],
+                    ]))?;
+                    *offset += 2;
+                    let pub_key_len =
+                        u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]) as usize;
+                    *offset += 2;
+                    let pub_key_bytes = &bytes[*offset..*offset + pub_key_len];
+                    *offset += pub_key_len;
+                    Ok(Extension::KeyShareServer(KeyShareEntry {
+                        group,
+                        pub_key: pub_key_bytes.to_vec(),
+                    }))
+                }
+            }
+            ExtensionType::supported_groups => {
+                let group_len = u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]) as usize;
+                *offset += 2;
+                let mut groups = Vec::new();
+                for _ in 0..(group_len / 2) {
+                    groups.push(NamedGroup::try_from(u16::from_be_bytes([
+                        bytes[*offset],
+                        bytes[*offset + 1],
+                    ]))?);
+                    *offset += 2;
+                }
+                Ok(Extension::SupportedGroups(groups))
+            }
+            other => bail!("Unsupported extension type: {:?}", other),
+        }
     }
 
     pub fn extension_type(&self) -> ExtensionType {

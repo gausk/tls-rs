@@ -89,4 +89,8 @@ impl HandShake {
     pub fn client_hello(share_pub_key: Vec<u8>) -> Self {
         HandShake::ClientHello(TlsClientHello::new(share_pub_key))
     }
+
+    pub fn server_hello(share_pub_key: Vec<u8>, session_id: [u8; 32]) -> Self {
+        HandShake::ServerHello(TlsServerHello::new(share_pub_key, session_id))
+    }
 }
