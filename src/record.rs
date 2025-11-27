@@ -60,7 +60,7 @@ impl TlsPlainText {
         TlsPlainText::new(TlsContentType::handshake, server_hello)
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize)> {
         let mut offset = 0;
         let len = bytes.len();
         if offset + 1 >= len {
@@ -82,12 +82,15 @@ impl TlsPlainText {
         if offset + length as usize > len {
             bail!("unexpected data length, not able to read fragment");
         }
-        Ok(Self {
-            content_type,
-            legacy_record_version,
-            length,
-            fragment: HandShake::from_bytes(&bytes[offset..offset + length as usize])?,
-        })
+        Ok((
+            Self {
+                content_type,
+                legacy_record_version,
+                length,
+                fragment: HandShake::from_bytes(&bytes[offset..offset + length as usize])?,
+            },
+            offset + length as usize,
+        ))
     }
 
     pub fn session_id(&self) -> [u8; 32] {

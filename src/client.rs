@@ -1,9 +1,11 @@
+use crate::crypto::{calculate_shared_secret, derive_handshake_secret, derive_key_and_iv};
 use crate::record::TlsPlainText;
-use crate::record_encrypted::calculate_handshake_traffic_secret;
+use crate::transcript_hash::TranscriptHasher;
 use anyhow::Result;
 use p256::ecdh::EphemeralSecret;
 use rand::random;
 use rand_core::OsRng;
+use std::ptr::hash;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -16,17 +18,28 @@ pub async fn tls_client() -> Result<()> {
     let pub_key_bytes = public_key.to_sec1_bytes().to_vec();
 
     let client_hello = TlsPlainText::client_hello(pub_key_bytes);
-    tcp_stream.write_all(&client_hello.into_bytes()).await?;
+    let client_hello_bytes = client_hello.into_bytes();
+    tcp_stream.write_all(&client_hello_bytes).await?;
     tcp_stream.flush().await?;
 
     // read ServerHello
     let mut data = vec![0u8; 1600];
     let len = tcp_stream.read(&mut data).await?;
-    let server_hello = TlsPlainText::from_bytes(&data[0..len])?;
+    let (server_hello, offset) = TlsPlainText::from_bytes(&data[0..len])?;
     println!("{:?}", server_hello);
 
-    let handshake_secret =
-        calculate_handshake_traffic_secret(&secret, server_hello.public_key()?)?;
+    let shared_secret = calculate_shared_secret(&secret, server_hello.public_key()?)?;
+    let mut hasher = TranscriptHasher::new();
+    hasher.update(&client_hello_bytes);
+    hasher.update(&data[0..offset]);
+    let transcript_hash = hasher.finish();
+
+    let (client_hs, server_hs) =
+        derive_handshake_secret(shared_secret.raw_secret_bytes(), transcript_hash.as_ref());
+
+    let (server_key, server_iv) = derive_key_and_iv(&server_hs);
+    let (client_key, client_iv) = derive_key_and_iv(&client_hs);
+
     Ok(())
 }
 

@@ -48,23 +48,3 @@ struct TLSInnerPlaintext {
     /// the total stays within record size limits.
     zeros: Vec<u8>,
 }
-
-// AEAD algorithms take as input a single key, a nonce, a plaintext, and
-// "additional data" to be included in the authentication check, as
-// described in Section 2.1 of [RFC5116].  The key is either the
-// client_write_key or the server_write_key, the nonce is derived from
-// the sequence number and the client_write_iv or server_write_iv (see
-// Section 5.3), and the additional data input is the record header.
-// I.e.,
-// additional_data = TLSCiphertext.opaque_type ||
-// TLSCiphertext.legacy_record_version || TLSCiphertext.length
-// AEADEncrypted = AEAD-Encrypt(write_key, nonce, additional_data, plaintext)
-
-/// Based on pvt key from client and public key for server or vice-versa
-pub fn calculate_handshake_traffic_secret(
-    pvt_key: &EphemeralSecret,
-    pub_key: &[u8],
-) -> Result<SharedSecret> {
-    let pub_key = PublicKey::from_sec1_bytes(pub_key)?;
-    Ok(pvt_key.diffie_hellman(&pub_key))
-}

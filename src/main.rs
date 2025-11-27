@@ -13,6 +13,7 @@ mod handshake;
 mod record;
 mod record_encrypted;
 mod server;
+mod transcript_hash;
 
 #[tokio::main]
 async fn main() -> Result<()> {
