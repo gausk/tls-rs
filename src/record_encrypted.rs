@@ -1,6 +1,8 @@
 use crate::common::TlsProtocolVersion;
+use crate::handshake::HandShake;
 use crate::record::TlsContentType;
-use anyhow::Result;
+use anyhow::{Result, bail};
+use num_enum::TryFromPrimitive;
 use p256::PublicKey;
 use p256::ecdh::{EphemeralSecret, SharedSecret};
 
@@ -28,7 +30,7 @@ pub struct TlsCipherText {
     /// for the inner content type, plus any expansion added by the AEAD algorithm.
     length: u16,
     /// The AEAD-encrypted form of the serialized TLSInnerPlaintext structure.
-    encrypted_record: Vec<u8>,
+    pub encrypted_record: Vec<u8>,
 }
 
 /// struct {
@@ -47,4 +49,40 @@ struct TLSInnerPlaintext {
     /// This provides an opportunity for senders to pad any TLS record by a chosen amount as long as
     /// the total stays within record size limits.
     zeros: Vec<u8>,
+}
+
+impl TlsCipherText {
+    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize)> {
+        let mut offset = 0;
+        let len = bytes.len();
+        if offset + 1 >= len {
+            bail!("unexpected data length, not able to read content type");
+        }
+        let content_type = TlsContentType::try_from(bytes[offset])?;
+        offset += 1;
+        if offset + 2 >= len {
+            bail!("unexpected data length, not able to read legacy record version");
+        }
+        let record_version = u16::from_be_bytes(bytes[offset..(offset + 2)].try_into()?);
+        let legacy_record_version = TlsProtocolVersion::try_from_primitive(record_version)?;
+        offset += 2;
+        if offset + 2 >= len {
+            bail!("unexpected data length, not able to read legacy record version");
+        }
+        let length = u16::from_be_bytes(bytes[offset..(offset + 2)].try_into()?);
+        offset += 2;
+        if offset + length as usize > len {
+            bail!("unexpected data length, not able to read fragment");
+        }
+
+        Ok((
+            Self {
+                content_type,
+                legacy_record_version,
+                length,
+                encrypted_record: (bytes[offset..offset + length as usize]).to_vec(),
+            },
+            offset + length as usize,
+        ))
+    }
 }

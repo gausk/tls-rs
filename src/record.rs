@@ -111,12 +111,13 @@ impl TlsPlainText {
             }
             HandShake::ClientHello(client) => {
                 for extension in &client.extensions {
-                    if let Extension::KeyShareServer(entry) = extension {
-                        return Ok(entry.pub_key.as_slice());
+                    if let Extension::KeyShareClient(entry) = extension {
+                        assert!(!entry.is_empty());
+                        return Ok(entry[0].pub_key.as_slice());
                     }
                 }
             }
         }
-        bail!("public key should be handshake");
+        bail!("public key should be present in handshake");
     }
 }

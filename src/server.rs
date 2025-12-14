@@ -15,7 +15,8 @@ pub async fn tls_server() -> Result<()> {
     let mut data = vec![0u8; 1600];
     let len = tcp_stream.read(&mut data).await?;
     let (client_hello, offset) = TlsPlainText::from_bytes(&data[0..len])?;
-    assert_eq!(offset, 0);
+    println!("client_hello: {:?}", client_hello);
+    assert_eq!(offset, len);
     println!("Server has received the client hello: {:?}", client_hello);
 
     // TODO: process client hello (currently we don't as we are the only client)

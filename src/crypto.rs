@@ -1,3 +1,7 @@
+use aes_gcm::aead::{Aead, AeadMutInPlace, Payload};
+use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
+use anyhow::{Result, anyhow};
+use num_enum::TryFromPrimitive;
 use p256::PublicKey;
 use p256::ecdh::EphemeralSecret;
 use p256::elliptic_curve::ecdh::SharedSecret;
@@ -102,4 +106,82 @@ pub fn calculate_shared_secret(
 ) -> anyhow::Result<p256::ecdh::SharedSecret> {
     let pub_key = PublicKey::from_sec1_bytes(pub_key)?;
     Ok(pvt_key.diffie_hellman(&pub_key))
+}
+
+pub struct TlsDataKeyInfo {
+    key: Aes256Gcm,
+    iv: Vec<u8>,
+    write_seq_no: u64,
+    read_seq_no: u64,
+}
+
+impl TlsDataKeyInfo {
+    pub fn new(key: Vec<u8>, iv: Vec<u8>) -> Self {
+        Self {
+            key: Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key)),
+            iv,
+            write_seq_no: 0,
+            read_seq_no: 1,
+        }
+    }
+
+    ///    A 64-bit sequence number is maintained separately for reading and
+    ///    writing records.  The appropriate sequence number is incremented by
+    ///    one after reading or writing each record.  Each sequence number is
+    ///    set to zero at the beginning of a connection and whenever the key is
+    ///    changed; the first record transmitted under a particular traffic key
+    ///    MUST use sequence number 0.
+    ///
+    ///    Because the size of sequence numbers is 64-bit, they should not wrap.
+    ///    If a TLS implementation would need to wrap a sequence number, it MUST
+    ///    either rekey (Section 4.6.3) or terminate the connection.
+    ///
+    ///    Each AEAD algorithm will specify a range of possible lengths for the
+    ///    per-record nonce, from N_MIN bytes to N_MAX bytes of input [RFC5116].
+    ///    The length of the TLS per-record nonce (iv_length) is set to the
+    ///    larger of 8 bytes and N_MIN for the AEAD algorithm (see [RFC5116],
+    ///    Section 4).  An AEAD algorithm where N_MAX is less than 8 bytes
+    ///    MUST NOT be used with TLS.  The per-record nonce for the AEAD
+    ///    construction is formed as follows:
+    ///
+    ///    1.  The 64-bit record sequence number is encoded in network byte
+    ///        order and padded to the left with zeros to iv_length.
+    ///
+    ///    2.  The padded sequence number is XORed with either the static
+    ///        client_write_iv or server_write_iv (depending on the role).
+    ///
+    ///    The resulting quantity (of length iv_length) is used as the
+    ///    per-record nonce.
+    pub fn get_nonce(&mut self, is_read: bool) -> Vec<u8> {
+        let mut nonce = vec![0u8; 12];
+        let seq_no = if is_read {
+            let n = self.read_seq_no;
+            self.read_seq_no += 1;
+            n
+        } else {
+            let n = self.write_seq_no;
+            self.write_seq_no += 1;
+            n
+        };
+        nonce[4..].copy_from_slice(&seq_no.to_be_bytes());
+        for i in 0..12 {
+            nonce[i] ^= self.iv[i];
+        }
+        nonce
+    }
+
+    pub fn decrypt(&mut self, ciphertext: &[u8], aead: &[u8]) -> Result<Vec<u8>> {
+        let nonce = self.get_nonce(true);
+        let out = self
+            .key
+            .decrypt(
+                Nonce::from_slice(&nonce),
+                Payload {
+                    msg: ciphertext,
+                    aad: aead,
+                },
+            )
+            .map_err(|e| anyhow!("decryption failed {e}"))?;
+        Ok(out)
+    }
 }
