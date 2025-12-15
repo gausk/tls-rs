@@ -91,6 +91,10 @@ mod tests {
                 "-quiet",
                 "-keylogfile",
                 "/tmp/sslkeys.log",
+                "-msgfile",
+                "/tmp/msg.log",
+                "-msg",
+                "-debug"
             ])
             .spawn()
             .expect("failed to start openssl");
@@ -99,6 +103,6 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(5)).await;
         let result = tls_client().await;
-        //eprintln!("{:?}", result);
+        eprintln!("{:?}", result);
     }
 }

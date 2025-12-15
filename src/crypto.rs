@@ -47,9 +47,67 @@ impl<'a> HkdfLabel<'a> {
     }
 }
 
+/// ```text
+///              0
+///              |
+///              v
+///    PSK ->  HKDF-Extract = Early Secret
+///              |
+///              +-----> Derive-Secret(., "ext binder" | "res binder", "")
+///              |                     = binder_key
+///              |
+///              +-----> Derive-Secret(., "c e traffic", ClientHello)
+///              |                     = client_early_traffic_secret
+///              |
+///              +-----> Derive-Secret(., "e exp master", ClientHello)
+///              |                     = early_exporter_master_secret
+///              v
+///        Derive-Secret(., "derived", "")
+///              |
+///              v
+///    (EC)DHE -> HKDF-Extract = Handshake Secret
+///              |
+///              +-----> Derive-Secret(., "c hs traffic",
+///              |                     ClientHello...ServerHello)
+///              |                     = client_handshake_traffic_secret
+///              |
+///              +-----> Derive-Secret(., "s hs traffic",
+///              |                     ClientHello...ServerHello)
+///              |                     = server_handshake_traffic_secret
+///              v
+///        Derive-Secret(., "derived", "")
+///              |
+///              v
+///         0 -> HKDF-Extract = Master Secret
+///              |
+///              +-----> Derive-Secret(., "c ap traffic",
+///              |                     ClientHello...server Finished)
+///              |                     = client_application_traffic_secret_0
+///              |
+///              +-----> Derive-Secret(., "s ap traffic",
+///              |                     ClientHello...server Finished)
+///              |                     = server_application_traffic_secret_0
+///              |
+///              +-----> Derive-Secret(., "exp master",
+///              |                     ClientHello...server Finished)
+///              |                     = exporter_master_secret
+///              |
+///              +-----> Derive-Secret(., "res master",
+///                                    ClientHello...client Finished)
+///                                    = resumption_master_secret
+/// ```
+///
+/// TLS 1.3 key schedule as defined in RFC 8446.
+/// - PSK is empty for a full (non-resumed) handshake.
+/// - (EC)DHE is the ephemeral Diffie–Hellman shared secret.
+/// - All secrets are derived using HKDF with the negotiated hash function.
 pub fn derive_handshake_secret(shared_secret: &[u8], transcript_hash: &[u8]) -> (Vec<u8>, Vec<u8>) {
     // early_secret = HKDF-Extract(0, 0)
     let zero_salt = Salt::new(HKDF_SHA384, &[0u8; 48]);
+    // If a given secret is not available, then the 0-value consisting of a
+    // string of Hash.length bytes set to zeros is used.  Note that this
+    // does not mean skipping rounds, so if PSK is not in use, Early Secret
+    // will still be HKDF-Extract(0, 0).
     let early_secret = zero_salt.extract(&[]);
 
     // derived_secret = HKDF-Expand-Label(early_secret, "derived", "")
