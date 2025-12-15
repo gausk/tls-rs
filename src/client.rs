@@ -35,12 +35,17 @@ pub async fn tls_client() -> Result<()> {
 
     let shared_secret = calculate_shared_secret(&secret, server_hello.public_key()?)?;
     let mut hasher = TranscriptHasher::new();
-    hasher.update(&client_hello_bytes);
-    hasher.update(&data[0..offset]);
+    // First 5 bytes are record header
+    println!("client hello only bytes: {}", hex::encode(&client_hello_bytes[5..]));
+    hasher.update(&client_hello_bytes[5..]);
+    println!("server hello only bytes: {}", hex::encode(&data[5..offset]));
+    hasher.update(&data[5..offset]);
     let transcript_hash = hasher.finish();
 
     let (client_hs, server_hs) =
         derive_handshake_secret(shared_secret.raw_secret_bytes(), transcript_hash.as_ref());
+    println!("ECDHE shared secret: {}", hex::encode(&shared_secret.raw_secret_bytes()));
+    println!("len = {}", shared_secret.raw_secret_bytes().len());
     println!("client_hs: {}", hex::encode(&client_hs));
     println!("server_hs: {}", hex::encode(&server_hs));
 
