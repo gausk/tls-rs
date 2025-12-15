@@ -1,4 +1,4 @@
-use aes_gcm::aead::{Aead, AeadMutInPlace, Payload};
+use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
 use anyhow::{Result, anyhow};
 use num_enum::TryFromPrimitive;
@@ -116,13 +116,13 @@ pub struct TlsDataKeyInfo {
 }
 
 impl TlsDataKeyInfo {
-    pub fn new(key: Vec<u8>, iv: Vec<u8>) -> Self {
-        Self {
-            key: Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key)),
+    pub fn new(key: Vec<u8>, iv: Vec<u8>) -> Result<Self> {
+        Ok(Self {
+            key: Aes256Gcm::new_from_slice(key.as_slice()).map_err(|e| anyhow!("{}", e))?,
             iv,
             write_seq_no: 0,
             read_seq_no: 1,
-        }
+        })
     }
 
     ///    A 64-bit sequence number is maintained separately for reading and
@@ -164,8 +164,8 @@ impl TlsDataKeyInfo {
             n
         };
         nonce[4..].copy_from_slice(&seq_no.to_be_bytes());
-        for i in 0..12 {
-            nonce[i] ^= self.iv[i];
+        for (i, item) in nonce.iter_mut().enumerate().take(12) {
+            *item ^= self.iv[i];
         }
         nonce
     }
@@ -175,7 +175,7 @@ impl TlsDataKeyInfo {
         let out = self
             .key
             .decrypt(
-                Nonce::from_slice(&nonce),
+                &Nonce::from_iter(nonce),
                 Payload {
                     msg: ciphertext,
                     aad: aead,

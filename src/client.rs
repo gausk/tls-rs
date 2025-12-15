@@ -46,7 +46,7 @@ pub async fn tls_client() -> Result<()> {
 
     let (server_key, server_iv) = derive_key_and_iv(&server_hs);
     println!("server_key: {}", hex::encode(&server_key));
-    let mut server_tls_data_key = TlsDataKeyInfo::new(server_key, server_iv);
+    let mut server_tls_data_key = TlsDataKeyInfo::new(server_key, server_iv)?;
     let (client_key, client_iv) = derive_key_and_iv(&client_hs);
     println!("client_key: {}", hex::encode(&client_key));
 
