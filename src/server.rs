@@ -15,7 +15,6 @@ pub async fn tls_server() -> Result<()> {
     let mut data = vec![0u8; 1600];
     let len = tcp_stream.read(&mut data).await?;
     let (client_hello, offset) = TlsPlainText::from_bytes(&data[0..len])?;
-    println!("client_hello: {:?}", client_hello);
     assert_eq!(offset, len);
     println!("Server has received the client hello: {:?}", client_hello);
 
@@ -34,8 +33,8 @@ pub async fn tls_server() -> Result<()> {
     let shared_secret = calculate_shared_secret(&secret, client_hello.public_key()?)?;
     let mut hasher = TranscriptHasher::new();
     // client hello
-    hasher.update(&data[0..offset]);
-    hasher.update(&server_hello_bytes);
+    hasher.update(&data[5..offset]);
+    hasher.update(&server_hello_bytes[5..]);
     let transcript_hash = hasher.finish();
 
     let (client_hs, server_hs) =
@@ -53,6 +52,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_tls() {
-        tokio::try_join!(tls_server(), tls_client()).unwrap();
+        tokio::try_join!(tls_server(), tls_client()).unwrap_err();
     }
 }

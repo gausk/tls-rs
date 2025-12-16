@@ -6,7 +6,7 @@ use p256::PublicKey;
 use p256::ecdh::EphemeralSecret;
 use p256::elliptic_curve::ecdh::SharedSecret;
 use ring::digest::SHA384;
-use ring::hkdf::{HKDF_SHA384, Prk, Salt};
+use ring::hkdf::{HKDF_SHA384, KeyType, Prk, Salt};
 
 const PREFIX_LABEL: &[u8] = b"tls13 ";
 
@@ -40,10 +40,12 @@ impl<'a> HkdfLabel<'a> {
         info.push(self.context.len() as u8);
         info.extend_from_slice(self.context);
 
+        let mut tempbuf = vec![0u8; HKDF_SHA384.len()];
         prk.expand(&[info.as_slice()], HKDF_SHA384)
             .expect("expand")
-            .fill(output)
+            .fill(&mut tempbuf)
             .expect("fill");
+        output[..self.length as usize].copy_from_slice(&tempbuf[..self.length as usize]);
     }
 }
 
@@ -108,12 +110,15 @@ pub fn derive_handshake_secret(shared_secret: &[u8], transcript_hash: &[u8]) -> 
     // string of Hash.length bytes set to zeros is used.  Note that this
     // does not mean skipping rounds, so if PSK is not in use, Early Secret
     // will still be HKDF-Extract(0, 0).
-    let early_secret = zero_salt.extract(&[]);
+    let early_secret = zero_salt.extract(&[0; 48]);
 
     // derived_secret = HKDF-Expand-Label(early_secret, "derived", "")
     // Derive-Secret(., "derived", "")
+    // Context is the hash of the empty message
+    let empty_hash = ring::digest::digest(&ring::digest::SHA384, &[]);
     let mut derived = vec![0u8; 48];
-    HkdfLabel::new(48, "derived", &[]).expand(&early_secret, derived.as_mut_slice());
+    HkdfLabel::new(48, "derived", empty_hash.as_ref())
+        .expand(&early_secret, derived.as_mut_slice());
 
     // handshake_secret = HKDF-Extract(derived_secret, shared_secret)
     let derived_salt = Salt::new(HKDF_SHA384, derived.as_slice());
@@ -132,15 +137,29 @@ pub fn derive_handshake_secret(shared_secret: &[u8], transcript_hash: &[u8]) -> 
     (client_hs, server_hs)
 }
 
+/// The traffic keying material is generated from the following input
+///  values:
+///
+///  -  A secret value
+///
+///  -  A purpose value indicating the specific value being generated
+///
+///  -  The length of the key being generated
+///
+///  The traffic keying material is generated from an input traffic secret
+///  value using:
+///
+///  [sender]_write_key = HKDF-Expand-Label(Secret, "key", "", key_length)
+///  [sender]_write_iv  = HKDF-Expand-Label(Secret, "iv", "", iv_length)
 pub fn derive_key_and_iv(traffic_secret: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let prk = Prk::new_less_safe(HKDF_SHA384, traffic_secret);
 
     // AES-256-GCM key length 32
-    let mut key = vec![0u8; 48];
+    let mut key = vec![0u8; 32];
     HkdfLabel::new(32, "key", &[]).expand(&prk, key.as_mut_slice());
 
     // IV length always 12 in TLS 1.3
-    let mut iv = vec![0u8; 48];
+    let mut iv = vec![0u8; 12];
     HkdfLabel::new(12, "iv", &[]).expand(&prk, iv.as_mut_slice());
 
     (key[..32].to_vec(), iv[0..12].to_vec())
@@ -179,7 +198,7 @@ impl TlsDataKeyInfo {
             key: Aes256Gcm::new_from_slice(key.as_slice()).map_err(|e| anyhow!("{}", e))?,
             iv,
             write_seq_no: 0,
-            read_seq_no: 1,
+            read_seq_no: 0,
         })
     }
 
