@@ -257,7 +257,12 @@ impl Extension {
 pub enum NamedGroup {
     secp256r1 = 0x0017,
     secp384r1 = 0x0018,
+    secp521r1 = 0x0019,
     x25519 = 0x001d,
+    x448 = 0x001e,
+    ffdhe2048 = 0x0100,
+    ffdhe3072 = 0x0101,
+    x25519mlkem768 = 0x11ec,
 }
 
 #[derive(Debug)]

@@ -1,4 +1,5 @@
 use crate::common::{TlsClientHello, TlsServerHello};
+use crate::extension::Extension;
 use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
 
@@ -7,6 +8,8 @@ use num_enum::TryFromPrimitive;
 pub enum HandShakeType {
     client_hello = 1,
     server_hello = 2,
+    encrypted_extensions = 8,
+    certificate = 11,
 }
 
 /// struct {
@@ -29,6 +32,7 @@ pub enum HandShakeType {
 pub enum HandShake {
     ClientHello(TlsClientHello),
     ServerHello(TlsServerHello),
+    EncryptedExtensions(Vec<Extension>),
 }
 
 impl HandShake {
@@ -50,6 +54,21 @@ impl HandShake {
                 assert!(len[0] == 0);
                 out.extend([len[1], len[2], len[3]]);
                 out.extend(data);
+            }
+            HandShake::EncryptedExtensions(extensions) => {
+                out.push(HandShakeType::encrypted_extensions as u8);
+                let mut extension_len = 0;
+                for extension in &extensions {
+                    extension_len += extension.len();
+                }
+                // Add total length
+                out.extend((extension_len as u16 + 2).to_be_bytes());
+                if extension_len > 0 {
+                    out.extend((extension_len as u16).to_be_bytes());
+                    for extension in extensions {
+                        out.extend(extension.into_bytes());
+                    }
+                }
             }
         }
         out
@@ -83,6 +102,12 @@ impl HandShake {
                 let server = TlsServerHello::from_bytes(&bytes[offset..])?;
                 HandShake::ServerHello(server)
             }
+            HandShakeType::encrypted_extensions => {
+                // EncryptedExtensions is shared by the server
+                let extensions = Extension::list_from_bytes(&bytes[offset..], false)?;
+                HandShake::EncryptedExtensions(extensions)
+            }
+            HandShakeType::certificate => unimplemented!(),
         })
     }
 

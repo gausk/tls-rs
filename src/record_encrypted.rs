@@ -1,4 +1,5 @@
 use crate::common::TlsProtocolVersion;
+use crate::crypto::TlsDataKeyInfo;
 use crate::handshake::HandShake;
 use crate::record::TlsContentType;
 use anyhow::{Result, bail};
@@ -30,7 +31,9 @@ pub struct TlsCipherText {
     /// for the inner content type, plus any expansion added by the AEAD algorithm.
     length: u16,
     /// The AEAD-encrypted form of the serialized TLSInnerPlaintext structure.
-    pub encrypted_record: Vec<u8>,
+    /// When data is sent or received, the data get encrypted/decrypted.
+    /// pub encrypted_record: Vec<u8>,
+    pub encrypted_record: TLSInnerPlaintext,
 }
 
 /// struct {
@@ -39,10 +42,11 @@ pub struct TlsCipherText {
 ///   uint8 zeros[length_of_padding];
 /// } TLSInnerPlaintext;
 #[derive(Debug)]
-struct TLSInnerPlaintext {
+pub struct TLSInnerPlaintext {
     /// The TLSPlaintext.fragment value, containing the byte encoding of a handshake
     /// or an alert message, or the raw bytes of the application's data to send.
-    content: Vec<u8>,
+    /// content: Vec<u8>,
+    content: TlsContent,
     /// The TLSPlaintext.type value containing the content type of the record.
     content_type: TlsContentType,
     /// An arbitrary-length run of zero-valued bytes may appear in the cleartext after the type field.
@@ -51,8 +55,55 @@ struct TLSInnerPlaintext {
     zeros: Vec<u8>,
 }
 
+impl TLSInnerPlaintext {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.is_empty() {
+            bail!("empty TLSInnerPlaintext");
+        }
+
+        // Find last non-zero byte (strip padding)
+        let end = match bytes.iter().rposition(|&b| b != 0) {
+            Some(i) => i + 1,
+            None => bail!("TLSInnerPlaintext contains only padding"),
+        };
+
+        // Last non-zero byte is content type
+        let content_type = TlsContentType::try_from_primitive(bytes[end - 1])?;
+
+        // Everything before content_type is content
+        let content_bytes = &bytes[..end - 1];
+        let content = TlsContent::from_bytes(content_bytes, &content_type)?;
+        let zeros = bytes[end..].to_vec();
+
+        Ok(Self {
+            content,
+            content_type,
+            zeros,
+        })
+    }
+}
+
+#[derive(Debug)]
+enum TlsContent {
+    Handshake(HandShake),
+    ApplicationData(Vec<u8>),
+    Alert(Vec<u8>),
+    Invalid,
+}
+
+impl TlsContent {
+    pub fn from_bytes(data: &[u8], content_type: &TlsContentType) -> Result<TlsContent> {
+        match content_type {
+            TlsContentType::handshake => Ok(Self::Handshake(HandShake::from_bytes(data)?)),
+            TlsContentType::application_data => Ok(Self::ApplicationData(data.to_vec())),
+            TlsContentType::alert => Ok(Self::Alert(data.to_vec())),
+            TlsContentType::invalid => Ok(Self::Invalid),
+        }
+    }
+}
+
 impl TlsCipherText {
-    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize)> {
+    pub fn from_bytes(bytes: &[u8], key_info: &mut TlsDataKeyInfo) -> Result<(Self, usize)> {
         let mut offset = 0;
         let len = bytes.len();
         if offset + 1 >= len {
@@ -74,13 +125,14 @@ impl TlsCipherText {
         if offset + length as usize > len {
             bail!("unexpected data length, not able to read fragment");
         }
-
+        let decrypted_bytes =
+            key_info.decrypt(&bytes[offset..offset + length as usize], &bytes[..5])?;
         Ok((
             Self {
                 content_type,
                 legacy_record_version,
                 length,
-                encrypted_record: (bytes[offset..offset + length as usize]).to_vec(),
+                encrypted_record: TLSInnerPlaintext::from_bytes(&decrypted_bytes)?,
             },
             offset + length as usize,
         ))

@@ -55,13 +55,14 @@ pub async fn tls_client() -> Result<()> {
     let (client_key, client_iv) = derive_key_and_iv(&client_hs);
     println!("client_key: {}", hex::encode(&client_key));
 
-    let (tls_cipher_text, update_offset) = TlsCipherText::from_bytes(&data[offset..len])?;
+    let (tls_cipher_text, update_offset) =
+        TlsCipherText::from_bytes(&data[offset..len], &mut server_tls_data_key)?;
     println!("Tls cipher text {:?}", tls_cipher_text);
-    println!("offset for decryption: {:?}", &data[offset..offset + 5]);
-    let decrypted_inner_info = server_tls_data_key
-        .decrypt(&tls_cipher_text.encrypted_record, &data[offset..offset + 5])?;
     offset += update_offset;
-    println!("decrypted inner_info: {:?}", decrypted_inner_info);
+    let (tls_cipher_text, update_offset) =
+        TlsCipherText::from_bytes(&data[offset..len], &mut server_tls_data_key)?;
+    println!("Tls cipher text {:?}", tls_cipher_text);
+    offset += update_offset;
     Ok(())
 }
 
