@@ -7,7 +7,6 @@ mod certificate_request;
 mod client;
 mod common;
 mod crypto;
-mod encrypted_extension;
 mod extension;
 mod handshake;
 mod record;
