@@ -192,9 +192,16 @@ impl TlsCipherText {
         out.push(self.content_type as u8);
         out.extend((self.legacy_record_version as u16).to_be_bytes());
         let data = self.encrypted_record.into_bytes();
+        println!("Data to be encrypted: {:?}, len: {}", data, data.len());
         let encrypted_data = key_info.encrypt(&data, out.as_slice())?;
+        println!(
+            "Encrypted data: {:?}, len: {}",
+            encrypted_data,
+            encrypted_data.len()
+        );
         out.extend((encrypted_data.len() as u16).to_be_bytes());
         out.extend(encrypted_data);
+        println!("TLS record data: {:?}, len: {:?}", out, out.len());
         Ok(out)
     }
 
