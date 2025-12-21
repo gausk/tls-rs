@@ -86,6 +86,21 @@ impl CertificateEntry {
         }
         Ok(entries)
     }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        let mut out = Vec::new();
+        let data = match self.cert_data {
+            CertificateTypeData::X509(data) => data,
+            CertificateTypeData::RawPublicKey(data) => data,
+        };
+        let len = (data.len() as u32).to_be_bytes();
+        assert!(len[0] == 0);
+        out.extend([len[1], len[2], len[3]]);
+        out.extend(data);
+        assert!(self.extensions.len() == 0);
+        out.extend(0u16.to_be_bytes());
+        out
+    }
 }
 
 /// struct {
@@ -132,5 +147,20 @@ impl Certificate {
             certificate_request_context,
             certificate_list,
         })
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.push(self.certificate_request_context.len() as u8);
+        out.extend(self.certificate_request_context);
+        let mut data = Vec::new();
+        for certificate in self.certificate_list {
+            data.extend(certificate.into_bytes());
+        }
+        let data_len = (data.len() as u32).to_be_bytes();
+        assert!(data_len[0] == 0);
+        out.extend([data_len[1], data_len[2], data_len[3]]);
+        out.extend(data);
+        out
     }
 }

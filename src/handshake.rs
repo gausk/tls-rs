@@ -80,13 +80,25 @@ impl HandShake {
             }
             HandShake::Certificate(certificate) => {
                 out.push(HandShakeType::certificate as u8);
+                let data = certificate.into_bytes();
+                let len = (data.len() as u32).to_be_bytes();
+                assert!(len[0] == 0);
+                out.extend([len[1], len[2], len[3]]);
+                out.extend(data);
             }
-            HandShake::CertificateVerify(certificate) => {
+            HandShake::CertificateVerify(cert_verify) => {
                 out.push(HandShakeType::certificate_verify as u8);
-                out.extend(certificate.into_bytes());
+                let data = cert_verify.into_bytes();
+                let len = (data.len() as u32).to_be_bytes();
+                assert!(len[0] == 0);
+                out.extend([len[1], len[2], len[3]]);
+                out.extend(data);
             }
             HandShake::Finished(finished) => {
                 out.push(HandShakeType::finished as u8);
+                let len = (finished.verify_data.len() as u32).to_be_bytes();
+                assert!(len[0] == 0);
+                out.extend([len[1], len[2], len[3]]);
                 out.extend(finished.verify_data);
             }
         }
