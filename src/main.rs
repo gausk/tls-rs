@@ -11,6 +11,7 @@ mod crypto;
 mod extension;
 mod finished;
 mod handshake;
+mod new_session_ticket;
 mod record;
 mod record_encrypted;
 mod server;

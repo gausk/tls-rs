@@ -37,7 +37,7 @@ pub async fn tls_server() -> Result<()> {
     hasher.update(&server_hello_bytes[5..]);
     let transcript_hash = hasher.finish();
 
-    let (client_hs, server_hs) =
+    let (client_hs, server_hs, derived_secret) =
         derive_handshake_secret(shared_secret.raw_secret_bytes(), transcript_hash.as_ref());
 
     let (server_key, server_iv) = derive_key_and_iv(&server_hs);

@@ -100,7 +100,8 @@ impl TlsPlainText {
             HandShake::EncryptedExtensions(_)
             | HandShake::Certificate(_)
             | HandShake::CertificateVerify(_)
-            | HandShake::Finished(_) => unreachable!(),
+            | HandShake::Finished(_)
+            | HandShake::NewSessionTicket(_) => unreachable!(),
         }
     }
 
@@ -124,7 +125,8 @@ impl TlsPlainText {
             HandShake::EncryptedExtensions(_)
             | HandShake::Certificate(_)
             | HandShake::CertificateVerify(_)
-            | HandShake::Finished(_) => unreachable!(),
+            | HandShake::Finished(_)
+            | HandShake::NewSessionTicket(_) => unreachable!(),
         }
         bail!("public key should be present in handshake");
     }

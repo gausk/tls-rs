@@ -1,6 +1,6 @@
 use crate::crypto::{
     TlsDataKeyInfo, calculate_shared_secret, derive_finished_key, derive_handshake_secret,
-    derive_key_and_iv,
+    derive_key_and_iv, derive_traffic_secret,
 };
 use crate::record::TlsPlainText;
 use crate::record_encrypted::TlsCipherText;
@@ -46,7 +46,7 @@ pub async fn tls_client() -> Result<()> {
     finished_hasher.update(&client_hello_bytes[5..]);
     finished_hasher.update(&data[5..offset]);
 
-    let (client_hs, server_hs) =
+    let (client_hs, server_hs, derived_secret) =
         derive_handshake_secret(shared_secret.raw_secret_bytes(), transcript_hash.as_ref());
     println!(
         "ECDHE shared secret: {}",
@@ -95,10 +95,6 @@ pub async fn tls_client() -> Result<()> {
     // TODO: Verify server finished message
     finished_hasher.update(&finished.handshake_bytes());
 
-    if offset < len {
-        println!("remaining data {:?}", &data[offset..len]);
-    }
-
     let client_finished_key = derive_finished_key(&client_hs);
     let finished_hash = finished_hasher.finish();
     let client_finished =
@@ -109,12 +105,51 @@ pub async fn tls_client() -> Result<()> {
     tcp_stream.write_all(&client_finished_bytes).await?;
     tcp_stream.flush().await?;
 
-    // let mut data = vec![0u8; 3200];
-    // let len = tcp_stream.read(&mut data).await?;
-    // let (tls_cipher_text, update_offset) =
-    //     TlsCipherText::from_bytes(&data[..len], &mut server_tls_data_key)?;
-    // println!("Received server message {:?}", tls_cipher_text);
-    time::sleep(Duration::from_secs(10)).await;
+    let (client_application_traffic_secret_0, server_application_traffic_secret_0) =
+        derive_traffic_secret(&derived_secret, finished_hash.as_ref());
+    println!(
+        "client_application_traffic_secret_0: {}",
+        hex::encode(&client_application_traffic_secret_0)
+    );
+    println!(
+        "server_application_traffic_secret_0: {}",
+        hex::encode(&server_application_traffic_secret_0)
+    );
+    let (client_key, client_iv) = derive_key_and_iv(&client_application_traffic_secret_0);
+    let mut client_app_key = TlsDataKeyInfo::new(client_key, client_iv)?;
+    let (server_key, server_iv) = derive_key_and_iv(&server_application_traffic_secret_0);
+    let mut server_app_key = TlsDataKeyInfo::new(server_key, server_iv)?;
+
+    time::sleep(Duration::from_secs(1)).await;
+    let mut data = vec![0u8; 3200];
+    let len = tcp_stream.read(&mut data).await?;
+    let (new_session_ticket, mut offset) =
+        TlsCipherText::from_bytes(&data[..len], &mut server_app_key)?;
+    println!(
+        "Received 1st server new_session_ticket message {:?}",
+        new_session_ticket
+    );
+
+    let (new_session_ticket, update_offset) =
+        TlsCipherText::from_bytes(&data[offset..len], &mut server_app_key)?;
+    println!(
+        "Received 2nd server new_session_ticket message {:?}",
+        new_session_ticket
+    );
+    offset += update_offset;
+    if offset < len {
+        let (server_data, update_offset) =
+            TlsCipherText::from_bytes(&data[offset..len], &mut server_app_key)?;
+        println!("Received server data {:?}", server_data);
+        offset += update_offset;
+    }
+    assert!(offset == len);
+
+    let data_ciphertext = TlsCipherText::from_application_data(b"Hello TLS 1.3 server".to_vec());
+    let data_ciphertext_bytes = data_ciphertext.into_bytes(&mut client_app_key)?;
+    println!("Client data ciphertext bytes: {:?}", data_ciphertext_bytes);
+    tcp_stream.write_all(&data_ciphertext_bytes).await?;
+    tcp_stream.flush().await?;
 
     Ok(())
 }
@@ -122,6 +157,7 @@ pub async fn tls_client() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use std::process::{Command, Stdio};
     use std::thread;
     use std::time::Duration;
@@ -152,16 +188,18 @@ mod tests {
                 "/tmp/sslkeys.log",
                 "-msgfile",
                 "/tmp/msg.log",
-                "-msg",
-                "-debug",
+                //"-msg",
+                //"-debug",
             ])
+            .stdin(Stdio::piped())
             .spawn()
             .expect("failed to start openssl");
 
-        let _server = ChildGuard(server_p);
-
         tokio::time::sleep(Duration::from_secs(5)).await;
-        let result = tls_client().await;
-        eprintln!("{:?}", result);
+        if let Some(stdin) = server_p.stdin.as_mut() {
+            stdin.write_all(b"Hello TLS 1.3 client").unwrap();
+        }
+        let _server = ChildGuard(server_p);
+        let result = tls_client().await.unwrap();
     }
 }

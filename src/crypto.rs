@@ -103,7 +103,10 @@ impl<'a> HkdfLabel<'a> {
 /// - PSK is empty for a full (non-resumed) handshake.
 /// - (EC)DHE is the ephemeral Diffie–Hellman shared secret.
 /// - All secrets are derived using HKDF with the negotiated hash function.
-pub fn derive_handshake_secret(shared_secret: &[u8], transcript_hash: &[u8]) -> (Vec<u8>, Vec<u8>) {
+pub fn derive_handshake_secret(
+    shared_secret: &[u8],
+    transcript_hash: &[u8],
+) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     // early_secret = HKDF-Extract(0, 0)
     let zero_salt = Salt::new(HKDF_SHA384, &[0u8; 48]);
     // If a given secret is not available, then the 0-value consisting of a
@@ -134,7 +137,38 @@ pub fn derive_handshake_secret(shared_secret: &[u8], transcript_hash: &[u8]) -> 
     HkdfLabel::new(48, "s hs traffic", transcript_hash)
         .expand(&handshake_secret, server_hs.as_mut_slice());
 
-    (client_hs, server_hs)
+    let mut derived_secret = vec![0u8; 48];
+    HkdfLabel::new(48, "derived", empty_hash.as_ref())
+        .expand(&handshake_secret, derived_secret.as_mut_slice());
+
+    (client_hs, server_hs, derived_secret)
+}
+
+pub fn derive_traffic_secret(
+    derived_secret: &[u8],
+    server_finished_hash: &[u8],
+) -> (Vec<u8>, Vec<u8>) {
+    let derived_salt = Salt::new(HKDF_SHA384, derived_secret);
+    let master_secret = derived_salt.extract(&[0; 48]);
+
+    // client_application_traffic_secret_0 = Derive-Secret(., "c ap traffic", ClientHello...server Finished)
+    let mut client_application_traffic_secret_0 = vec![0u8; 48];
+    HkdfLabel::new(48, "c ap traffic", server_finished_hash).expand(
+        &master_secret,
+        client_application_traffic_secret_0.as_mut_slice(),
+    );
+
+    // server_application_traffic_secret_0 = Derive-Secret(., "s ap traffic", ClientHello...server Finished)
+    let mut server_application_traffic_secret_0 = vec![0u8; 48];
+    HkdfLabel::new(48, "s ap traffic", server_finished_hash).expand(
+        &master_secret,
+        server_application_traffic_secret_0.as_mut_slice(),
+    );
+
+    (
+        client_application_traffic_secret_0,
+        server_application_traffic_secret_0,
+    )
 }
 
 /// The traffic keying material is generated from the following input
@@ -151,8 +185,8 @@ pub fn derive_handshake_secret(shared_secret: &[u8], transcript_hash: &[u8]) -> 
 ///
 ///  [sender]_write_key = HKDF-Expand-Label(Secret, "key", "", key_length)
 ///  [sender]_write_iv  = HKDF-Expand-Label(Secret, "iv", "", iv_length)
-pub fn derive_key_and_iv(traffic_secret: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let prk = Prk::new_less_safe(HKDF_SHA384, traffic_secret);
+pub fn derive_key_and_iv(secret: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let prk = Prk::new_less_safe(HKDF_SHA384, secret);
 
     // AES-256-GCM key length 32
     let mut key = vec![0u8; 32];

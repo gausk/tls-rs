@@ -3,6 +3,7 @@ use crate::certificate_request::{Certificate, CertificateType};
 use crate::common::{TlsClientHello, TlsServerHello};
 use crate::extension::Extension;
 use crate::finished::Finished;
+use crate::new_session_ticket::NewSessionTicket;
 use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
 
@@ -11,6 +12,7 @@ use num_enum::TryFromPrimitive;
 pub enum HandShakeType {
     client_hello = 1,
     server_hello = 2,
+    new_session_ticket = 4,
     encrypted_extensions = 8,
     certificate = 11,
     certificate_verify = 15,
@@ -41,6 +43,7 @@ pub enum HandShake {
     Certificate(Certificate),
     CertificateVerify(CertificateVerify),
     Finished(Finished),
+    NewSessionTicket(NewSessionTicket),
 }
 
 impl HandShake {
@@ -103,6 +106,10 @@ impl HandShake {
                 out.extend([len[1], len[2], len[3]]);
                 out.extend(finished.verify_data);
             }
+            HandShake::NewSessionTicket(new_session_ticket) => {
+                out.push(HandShakeType::new_session_ticket as u8);
+                unimplemented!()
+            }
         }
         out
     }
@@ -152,6 +159,10 @@ impl HandShake {
             HandShakeType::finished => {
                 let finished = Finished::from_bytes(&bytes[offset..])?;
                 HandShake::Finished(finished)
+            }
+            HandShakeType::new_session_ticket => {
+                let session_ticket = NewSessionTicket::from_bytes(&bytes[offset..])?;
+                HandShake::NewSessionTicket(session_ticket)
             }
         })
     }

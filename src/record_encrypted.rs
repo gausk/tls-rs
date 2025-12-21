@@ -128,7 +128,10 @@ impl TlsContent {
     pub fn from_bytes(data: &[u8], content_type: &TlsContentType) -> Result<TlsContent> {
         match content_type {
             TlsContentType::handshake => Ok(Self::Handshake(HandShake::from_bytes(data)?)),
-            TlsContentType::application_data => Ok(Self::ApplicationData(data.to_vec())),
+            TlsContentType::application_data => {
+                println!("ApplicationData: \"{}\"", String::from_utf8_lossy(data));
+                Ok(Self::ApplicationData(data.to_vec()))
+            }
             TlsContentType::alert => Ok(Self::Alert(data.to_vec())),
             TlsContentType::invalid => Ok(Self::Invalid),
         }
@@ -187,11 +190,27 @@ impl TlsCipherText {
         })
     }
 
+    pub fn from_application_data(data: Vec<u8>) -> Self {
+        let inner = TLSInnerPlaintext {
+            content: TlsContent::ApplicationData(data),
+            content_type: TlsContentType::application_data,
+            zeros: vec![],
+        };
+        Self {
+            content_type: TlsContentType::application_data,
+            legacy_record_version: TlsProtocolVersion::Tls12,
+            // We will update length when trying to convert to bytes
+            length: 0,
+            encrypted_record: inner,
+        }
+    }
+
     pub fn into_bytes(self, key_info: &mut TlsDataKeyInfo) -> Result<Vec<u8>> {
         let mut out = Vec::new();
         out.push(self.content_type as u8);
         out.extend((self.legacy_record_version as u16).to_be_bytes());
         let data = self.encrypted_record.into_bytes();
+        // encryption add 16 bytes
         out.extend((data.len() as u16 + 16).to_be_bytes());
         let encrypted_data = key_info.encrypt(&data, out.as_slice())?;
         out.extend(encrypted_data);
