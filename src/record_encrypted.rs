@@ -173,8 +173,6 @@ impl TlsCipherText {
 
     pub fn client_finished(finished_key: Vec<u8>, hash: &[u8]) -> Result<Self> {
         let finished = Finished::derive(finished_key, hash)?;
-        //  for
-        let inner_len = finished.verify_data.len() + 1 /* HandshakeType */ + 1 /*(TLSInnerPlaintext.content_type */;
         let inner = TLSInnerPlaintext {
             content: TlsContent::Handshake(HandShake::Finished(finished)),
             content_type: TlsContentType::handshake,
@@ -183,7 +181,8 @@ impl TlsCipherText {
         Ok(Self {
             content_type: TlsContentType::application_data,
             legacy_record_version: TlsProtocolVersion::Tls12,
-            length: inner_len as u16,
+            // We will update length when trying to convert to bytes
+            length: 0,
             encrypted_record: inner,
         })
     }
@@ -192,9 +191,9 @@ impl TlsCipherText {
         let mut out = Vec::new();
         out.push(self.content_type as u8);
         out.extend((self.legacy_record_version as u16).to_be_bytes());
-        out.extend(self.length.to_be_bytes());
         let data = self.encrypted_record.into_bytes();
         let encrypted_data = key_info.encrypt(&data, out.as_slice())?;
+        out.extend((encrypted_data.len() as u16).to_be_bytes());
         out.extend(encrypted_data);
         Ok(out)
     }

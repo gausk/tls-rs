@@ -1,5 +1,8 @@
 use anyhow::{Result, bail};
+use ring::digest::SHA384;
+use ring::hkdf::KeyType;
 use ring::hmac;
+use ring::hmac::HMAC_SHA384;
 
 #[derive(Debug)]
 pub struct Finished {
@@ -8,6 +11,9 @@ pub struct Finished {
 
 impl Finished {
     pub fn from_bytes(data: &[u8]) -> Result<Finished> {
+        if data.len() != HMAC_SHA384.len() {
+            bail!("Wrong length for finished message");
+        }
         Ok(Self {
             verify_data: data.to_vec(),
         })
