@@ -108,11 +108,11 @@ pub async fn tls_client() -> Result<()> {
     tcp_stream.write_all(&client_finished_bytes).await?;
     tcp_stream.flush().await?;
 
-    let mut data = vec![0u8; 3200];
-    let len = tcp_stream.read(&mut data).await?;
-    let (tls_cipher_text, update_offset) =
-        TlsCipherText::from_bytes(&data[..len], &mut server_tls_data_key)?;
-    println!("Received server message {:?}", tls_cipher_text);
+    // let mut data = vec![0u8; 3200];
+    // let len = tcp_stream.read(&mut data).await?;
+    // let (tls_cipher_text, update_offset) =
+    //     TlsCipherText::from_bytes(&data[..len], &mut server_tls_data_key)?;
+    // println!("Received server message {:?}", tls_cipher_text);
     time::sleep(Duration::from_secs(10)).await;
 
     Ok(())
