@@ -262,6 +262,9 @@ pub enum NamedGroup {
     x448 = 0x001e,
     ffdhe2048 = 0x0100,
     ffdhe3072 = 0x0101,
+    ffdhe4096 = 0x0102,
+    ffdhe6144 = 0x0103,
+    ffdhe8192 = 0x0104,
     x25519mlkem768 = 0x11ec,
 }
 
