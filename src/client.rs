@@ -93,6 +93,7 @@ pub async fn tls_client() -> Result<()> {
     println!("Received server finished message {:?}", finished);
     offset += update_offset;
     // TODO: Verify server finished message
+    finished_hasher.update(&finished.handshake_bytes());
 
     if offset < len {
         println!("remaining data {:?}", &data[offset..len]);

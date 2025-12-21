@@ -105,6 +105,7 @@ impl HandShake {
                 assert!(len[0] == 0);
                 out.extend([len[1], len[2], len[3]]);
                 out.extend(finished.verify_data);
+                println!("finished into bytes: {:?}", out);
             }
         }
         out
@@ -139,24 +140,25 @@ impl HandShake {
                 HandShake::ServerHello(server)
             }
             HandShakeType::encrypted_extensions => {
-                println!("encrypted extensions bytes: {:?}", &bytes[offset-4..]);
+                println!("encrypted extensions bytes: {:?}", &bytes[offset - 4..]);
                 // EncryptedExtensions is shared by the server
                 let extensions = Extension::list_from_bytes(&bytes[offset..], false)?.0;
                 HandShake::EncryptedExtensions(extensions)
             }
             HandShakeType::certificate => {
                 // Use default certificate type
-                println!("certificate bytes: {:?}", &bytes[offset-4..]);
+                println!("certificate bytes: {:?}", &bytes[offset - 4..]);
                 let certificate = Certificate::from_bytes(&bytes[offset..], CertificateType::X509)?;
                 HandShake::Certificate(certificate)
             }
             HandShakeType::certificate_verify => {
                 let certificate_verify = CertificateVerify::from_bytes(&bytes[offset..])?;
-                println!("certificate_verify bytes: {:?}", &bytes[offset-4..]);
+                println!("certificate_verify bytes: {:?}", &bytes[offset - 4..]);
                 HandShake::CertificateVerify(certificate_verify)
             }
             HandShakeType::finished => {
                 let finished = Finished::from_bytes(&bytes[offset..])?;
+                println!("finished bytes: {:?}", &bytes[offset - 4..]);
                 HandShake::Finished(finished)
             }
         })

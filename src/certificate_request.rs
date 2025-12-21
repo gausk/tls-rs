@@ -97,7 +97,7 @@ impl CertificateEntry {
         assert!(len[0] == 0);
         out.extend([len[1], len[2], len[3]]);
         out.extend(data);
-        assert!(self.extensions.len() == 0);
+        assert!(self.extensions.is_empty());
         out.extend(0u16.to_be_bytes());
         out
     }
