@@ -89,7 +89,7 @@ impl Extension {
         out
     }
 
-    pub fn list_from_bytes(bytes: &[u8], is_client: bool) -> Result<Vec<Extension>> {
+    pub fn list_from_bytes(bytes: &[u8], is_client: bool) -> Result<(Vec<Extension>, usize)> {
         let mut offset = 0;
         let length = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) as usize;
         offset += 2;
@@ -101,7 +101,7 @@ impl Extension {
             let ext = Extension::from_bytes(bytes, &mut offset, is_client)?;
             extensions.push(ext);
         }
-        Ok(extensions)
+        Ok((extensions, offset))
     }
 
     pub fn from_bytes(bytes: &[u8], offset: &mut usize, is_client: bool) -> Result<Extension> {

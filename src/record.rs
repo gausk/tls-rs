@@ -97,7 +97,10 @@ impl TlsPlainText {
         match &self.fragment {
             HandShake::ServerHello(server) => server.legacy_session_id_echo,
             HandShake::ClientHello(client) => client.legacy_session_id,
-            HandShake::EncryptedExtensions(_) => unreachable!(),
+            HandShake::EncryptedExtensions(_)
+            | HandShake::Certificate(_)
+            | HandShake::CertificateVerify(_)
+            | HandShake::Finished(_) => unreachable!(),
         }
     }
 
@@ -118,7 +121,10 @@ impl TlsPlainText {
                     }
                 }
             }
-            HandShake::EncryptedExtensions(_) => unreachable!(),
+            HandShake::EncryptedExtensions(_)
+            | HandShake::Certificate(_)
+            | HandShake::CertificateVerify(_)
+            | HandShake::Finished(_) => unreachable!(),
         }
         bail!("public key should be present in handshake");
     }

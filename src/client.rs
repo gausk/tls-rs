@@ -31,7 +31,6 @@ pub async fn tls_client() -> Result<()> {
     let len = tcp_stream.read(&mut data).await?;
     let (server_hello, mut offset) = TlsPlainText::from_bytes(&data[0..len])?;
     println!("Received server_hello: {:?}", server_hello);
-    println!("Received remaining data: {:?}", &data[offset..len]);
 
     let shared_secret = calculate_shared_secret(&secret, server_hello.public_key()?)?;
     let mut hasher = TranscriptHasher::new();
@@ -57,12 +56,33 @@ pub async fn tls_client() -> Result<()> {
 
     let (tls_cipher_text, update_offset) =
         TlsCipherText::from_bytes(&data[offset..len], &mut server_tls_data_key)?;
-    println!("Tls cipher text {:?}", tls_cipher_text);
+    println!(
+        "Received server Encrypted Extensions message {:?}",
+        tls_cipher_text
+    );
     offset += update_offset;
+
     let (tls_cipher_text, update_offset) =
         TlsCipherText::from_bytes(&data[offset..len], &mut server_tls_data_key)?;
-    println!("Tls cipher text {:?}", tls_cipher_text);
+    println!("Received server certificate message {:?}", tls_cipher_text);
     offset += update_offset;
+
+    let (certificate_verify, update_offset) =
+        TlsCipherText::from_bytes(&data[offset..len], &mut server_tls_data_key)?;
+    println!(
+        "Received server certificate_verify message {:?}",
+        certificate_verify
+    );
+    offset += update_offset;
+
+    let (finished, update_offset) =
+        TlsCipherText::from_bytes(&data[offset..len], &mut server_tls_data_key)?;
+    println!("Received server finished message {:?}", finished);
+    offset += update_offset;
+
+    if offset < len {
+        println!("remaining data {:?}", &data[offset..len]);
+    }
     Ok(())
 }
 

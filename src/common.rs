@@ -112,7 +112,7 @@ impl TlsClientHello {
             legacy_session_id: legacy_session_id.try_into()?,
             cipher_suites,
             legacy_compression_method: 0,
-            extensions: Extension::list_from_bytes(&bytes[offset..], true)?,
+            extensions: Extension::list_from_bytes(&bytes[offset..], true)?.0,
         })
     }
 }
@@ -229,7 +229,7 @@ impl TlsServerHello {
             legacy_session_id_echo: legacy_session_id.try_into()?,
             cipher_suite,
             legacy_compression_method: 0,
-            extensions: Extension::list_from_bytes(&bytes[offset..], false)?,
+            extensions: Extension::list_from_bytes(&bytes[offset..], false)?.0,
         })
     }
 }

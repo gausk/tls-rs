@@ -1,5 +1,8 @@
+use crate::cert_verify::CertificateVerify;
+use crate::certificate_request::{Certificate, CertificateType};
 use crate::common::{TlsClientHello, TlsServerHello};
 use crate::extension::Extension;
+use crate::finished::Finished;
 use anyhow::{Result, bail};
 use num_enum::TryFromPrimitive;
 
@@ -10,6 +13,8 @@ pub enum HandShakeType {
     server_hello = 2,
     encrypted_extensions = 8,
     certificate = 11,
+    certificate_verify = 15,
+    finished = 20,
 }
 
 /// struct {
@@ -33,6 +38,9 @@ pub enum HandShake {
     ClientHello(TlsClientHello),
     ServerHello(TlsServerHello),
     EncryptedExtensions(Vec<Extension>),
+    Certificate(Certificate),
+    CertificateVerify(CertificateVerify),
+    Finished(Finished),
 }
 
 impl HandShake {
@@ -70,6 +78,18 @@ impl HandShake {
                     }
                 }
             }
+            HandShake::Certificate(certificate) => {
+                out.push(HandShakeType::certificate as u8);
+                unimplemented!()
+            }
+            HandShake::CertificateVerify(certificate) => {
+                out.push(HandShakeType::certificate_verify as u8);
+                unimplemented!()
+            }
+            HandShake::Finished(finished) => {
+                out.push(HandShakeType::finished as u8);
+                unimplemented!()
+            }
         }
         out
     }
@@ -104,10 +124,22 @@ impl HandShake {
             }
             HandShakeType::encrypted_extensions => {
                 // EncryptedExtensions is shared by the server
-                let extensions = Extension::list_from_bytes(&bytes[offset..], false)?;
+                let extensions = Extension::list_from_bytes(&bytes[offset..], false)?.0;
                 HandShake::EncryptedExtensions(extensions)
             }
-            HandShakeType::certificate => unimplemented!(),
+            HandShakeType::certificate => {
+                // Use default certificate type
+                let certificate = Certificate::from_bytes(&bytes[offset..], CertificateType::X509)?;
+                HandShake::Certificate(certificate)
+            }
+            HandShakeType::certificate_verify => {
+                let certificate_verify = CertificateVerify::from_bytes(&bytes[offset..])?;
+                HandShake::CertificateVerify(certificate_verify)
+            }
+            HandShakeType::finished => {
+                let finished = Finished::from_bytes(&bytes[offset..])?;
+                HandShake::Finished(finished)
+            }
         })
     }
 
