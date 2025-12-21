@@ -1,5 +1,6 @@
 use crate::common::TlsProtocolVersion;
 use crate::crypto::TlsDataKeyInfo;
+use crate::finished::Finished;
 use crate::handshake::HandShake;
 use crate::record::TlsContentType;
 use anyhow::{Result, bail};
@@ -81,6 +82,21 @@ impl TLSInnerPlaintext {
             zeros,
         })
     }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend(self.content.into_bytes());
+        out.push(self.content_type as u8);
+        out.extend(self.zeros);
+        out
+    }
+
+    pub fn handshake_bytes(self) -> Vec<u8> {
+        match self.content {
+            TlsContent::Handshake(handshake) => handshake.into_bytes(),
+            other => unreachable!("unexpected TLSInnerPlaintext type: {:?}", other),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -89,6 +105,23 @@ enum TlsContent {
     ApplicationData(Vec<u8>),
     Alert(Vec<u8>),
     Invalid,
+}
+
+impl TlsContent {
+    pub fn into_bytes(self) -> Vec<u8> {
+        let mut out = Vec::new();
+        match self {
+            TlsContent::Handshake(handshake) => out.extend(handshake.into_bytes()),
+            TlsContent::ApplicationData(data) => {
+                out.extend(data);
+            }
+            TlsContent::Alert(data) => {
+                out.extend(data);
+            }
+            TlsContent::Invalid => {}
+        }
+        out
+    }
 }
 
 impl TlsContent {
@@ -136,5 +169,37 @@ impl TlsCipherText {
             },
             offset + length as usize,
         ))
+    }
+
+    pub fn client_finished(finished_key: Vec<u8>, hash: &[u8]) -> Result<Self> {
+        let finished = Finished::derive(finished_key, hash)?;
+        //  for
+        let inner_len = finished.verify_data.len() + 1 /* HandshakeType */ + 1 /*(TLSInnerPlaintext.content_type */;
+        let inner = TLSInnerPlaintext {
+            content: TlsContent::Handshake(HandShake::Finished(finished)),
+            content_type: TlsContentType::handshake,
+            zeros: vec![],
+        };
+        Ok(Self {
+            content_type: TlsContentType::application_data,
+            legacy_record_version: TlsProtocolVersion::Tls12,
+            length: inner_len as u16,
+            encrypted_record: inner,
+        })
+    }
+
+    pub fn into_bytes(self, key_info: &mut TlsDataKeyInfo) -> Result<Vec<u8>> {
+        let mut out = Vec::new();
+        out.push(self.content_type as u8);
+        out.extend((self.legacy_record_version as u16).to_be_bytes());
+        out.extend(self.length.to_be_bytes());
+        let data = self.encrypted_record.into_bytes();
+        let encrypted_data = key_info.encrypt(&data, out.as_slice())?;
+        out.extend(encrypted_data);
+        Ok(out)
+    }
+
+    pub fn handshake_bytes(self) -> Vec<u8> {
+        self.encrypted_record.handshake_bytes()
     }
 }

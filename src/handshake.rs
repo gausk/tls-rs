@@ -80,15 +80,14 @@ impl HandShake {
             }
             HandShake::Certificate(certificate) => {
                 out.push(HandShakeType::certificate as u8);
-                unimplemented!()
             }
             HandShake::CertificateVerify(certificate) => {
                 out.push(HandShakeType::certificate_verify as u8);
-                unimplemented!()
+                out.extend(certificate.into_bytes());
             }
             HandShake::Finished(finished) => {
                 out.push(HandShakeType::finished as u8);
-                unimplemented!()
+                out.extend(finished.verify_data);
             }
         }
         out

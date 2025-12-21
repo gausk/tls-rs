@@ -165,6 +165,13 @@ pub fn derive_key_and_iv(traffic_secret: &[u8]) -> (Vec<u8>, Vec<u8>) {
     (key[..32].to_vec(), iv[0..12].to_vec())
 }
 
+pub fn derive_finished_key(traffic_secret: &[u8]) -> Vec<u8> {
+    let prk = Prk::new_less_safe(HKDF_SHA384, traffic_secret);
+    let mut key = vec![0u8; HKDF_SHA384.len()];
+    HkdfLabel::new(HKDF_SHA384.len() as u16, "finished", &[]).expand(&prk, key.as_mut_slice());
+    key
+}
+
 // AEAD algorithms take as input a single key, a nonce, a plaintext, and
 // "additional data" to be included in the authentication check, as
 // described in Section 2.1 of [RFC5116].  The key is either the
@@ -259,6 +266,18 @@ impl TlsDataKeyInfo {
                 },
             )
             .map_err(|e| anyhow!("decryption failed {e}"))?;
+        Ok(out)
+    }
+
+    pub fn encrypt(&mut self, plaintext: &[u8], aead: &[u8]) -> Result<Vec<u8>> {
+        let nonce = self.get_nonce(false);
+        let out = self.key.encrypt(
+            &Nonce::from_iter(nonce),
+            Payload {
+                msg: plaintext,
+                aad: aead,
+            },
+        )?;
         Ok(out)
     }
 }

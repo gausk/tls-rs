@@ -42,4 +42,12 @@ impl CertificateVerify {
             signature: data[4..].to_vec(),
         })
     }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend((self.algorithm as u16).to_be_bytes());
+        out.extend((self.signature.len() as u16).to_be_bytes());
+        out.extend(self.signature);
+        out
+    }
 }
